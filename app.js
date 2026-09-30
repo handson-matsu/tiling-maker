@@ -8,7 +8,7 @@ let original = null, background = null, tileAsset = null, tiles = [], selected =
 // Earlier clicks are committed; the slider recalculates only the latest fill.
 let committedPixels = null, activeSeed = null;
 let drag = null, sequence = 0, loadSequence = 0, downloadUrl = null;
-const controls = ['left', 'right', 'flip', 'grow', 'shrink', 'delete'];
+const controls = ['left', 'right', 'flip', 'grow', 'shrink', 'copy', 'delete'];
 function status(message) { $('status').textContent = message; }
 function update() {
   const tile = tiles.find(t => t.id === selected);
@@ -163,7 +163,7 @@ $('restore').addEventListener('click', () => {
 });
 $('add').addEventListener('click', () => {
   if (!tileAsset) return;
-  const size = 180 / Math.max(tileAsset.canvas.width,tileAsset.canvas.height);
+  const size = (180 * 1.2 ** 3) / Math.max(tileAsset.canvas.width,tileAsset.canvas.height);
   const offset = (tiles.length % 8)*22;
   const tile = { id: ++sequence, asset: tileAsset, x: board.width/2-70+offset, y: board.height/2-70+offset, w: tileAsset.canvas.width*size, h: tileAsset.canvas.height*size, angle:0, flip:false, scale:1, color:null, coloredCanvas:null };
   tiles.push(tile); selected = tile.id; update(); status('タイルを追加しました。ドラッグして好きな場所に動かしましょう。');
@@ -201,6 +201,18 @@ $('right').onclick = () => edit(t=>t.angle=(t.angle+30)%360);
 $('flip').onclick = () => edit(t=>t.flip=!t.flip);
 $('grow').onclick = () => edit(t=>t.scale=Math.min(5,t.scale*1.2));
 $('shrink').onclick = () => edit(t=>t.scale=Math.max(.2,t.scale/1.2));
+$('copy').onclick = () => edit(tile => {
+  const copy = {
+    ...tile, id: ++sequence,
+    x: tile.x + (tile.x + 24 <= board.width ? 24 : -24),
+    y: tile.y + (tile.y + 24 <= board.height ? 24 : -24),
+    coloredCanvas: null,
+  };
+  // The source asset is immutable; each copy owns its mutable color canvas.
+  setTileColor(copy, tile.color);
+  tiles.push(copy); selected = copy.id;
+  status('タイルをコピーしました。コピーしたタイルを選択しています。');
+});
 $('delete').onclick = () => edit(t=>{ tiles=tiles.filter(v=>v.id!==t.id); selected=null; status('選択したタイルを削除しました。'); });
 $('next').onclick = () => { if (!tiles.length) return; const index=tiles.findIndex(t=>t.id===selected); selected=tiles[(index+1)%tiles.length].id; update(); };
 board.addEventListener('keydown',event=>{
@@ -223,7 +235,10 @@ $('save').onclick = () => {
     if (!blob) {status('画像を保存できませんでした。もう一度お試しください。');return;}
     if (downloadUrl) URL.revokeObjectURL(downloadUrl);
     downloadUrl=URL.createObjectURL(blob);
-    const a=document.createElement('a'); a.href=downloadUrl; a.download=`my-tiling-${new Date().toISOString().slice(0,10)}.png`; document.body.append(a); a.click(); a.remove();
+    const now = new Date();
+    const pad = value => String(value).padStart(2, '0');
+    const stamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+    const a=document.createElement('a'); a.href=downloadUrl; a.download=`my-tiling-${stamp}.png`; document.body.append(a); a.click(); a.remove();
     $('download-link').href=downloadUrl; $('download-fallback').hidden=false;
     status('PNG画像を書き出しました（1200 × 800）。保存先をご確認ください。');
   },'image/png');
