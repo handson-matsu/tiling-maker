@@ -19,7 +19,7 @@ const path=require('node:path');
  const before=await page.evaluate(()=>tiles[0].coloredCanvas.toDataURL());
  await page.locator('#copy').click();
  assert.ok(await page.evaluate(()=>{
- const [a,b]=tiles;return selected===b.id&&a.id!==b.id&&a.asset===b.asset&&a.coloredCanvas!==b.coloredCanvas&&a.coloredCanvas.toDataURL()===b.coloredCanvas.toDataURL()&&b.x===a.x+24&&b.y===a.y+24&&['w','h','scale','angle','flip','color'].every(k=>a[k]===b[k]);
+ const [a,b]=tiles;return selected===b.id&&a.id!==b.id&&a.asset===b.asset&&a.coloredCanvas===b.coloredCanvas&&a.coloredCanvas.toDataURL()===b.coloredCanvas.toDataURL()&&b.x===a.x+24&&b.y===a.y+24&&['w','h','scale','angle','flip','color'].every(k=>a[k]===b[k]);
  }));
  await page.locator('#tile-color').fill('#e85d45');
  assert.equal(await page.evaluate(()=>tiles[0].coloredCanvas.toDataURL()),before);

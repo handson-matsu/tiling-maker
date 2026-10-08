@@ -8,6 +8,36 @@ let original = null, background = null, tileAsset = null, tiles = [], selected =
 // Earlier clicks are committed; the slider recalculates only the latest fill.
 let committedPixels = null, activeSeed = null;
 let drag = null, sequence = 0, loadSequence = 0, downloadUrl = null;
+// Render at most once per display frame. State changes are never dropped.
+let drawFrame = 0, colorFrame = 0, backgroundTimer = 0, backgroundPending = false;
+let imageLoad = Promise.resolve();
+let floodVisited = null, floodQueue = null, workPixels = null;
+const pendingColors = new Map();
+function requestDraw() {
+  if (!drawFrame) drawFrame = requestAnimationFrame(() => { drawFrame = 0; draw(); });
+}
+function flushColors() {
+  cancelAnimationFrame(colorFrame); colorFrame = 0;
+  for (const [tile, color] of pendingColors) setTileColor(tile, color);
+  pendingColors.clear();
+}
+function flushBackground() {
+  clearTimeout(backgroundTimer); backgroundTimer = 0;
+  if (backgroundPending) { backgroundPending = false; processImage(); }
+}
+function releaseColor(tile) {
+  const entry = tile.colorEntry;
+  if (entry && --entry.refs === 0) {
+    tile.asset.colors.delete(entry.color);
+    entry.canvas.width = entry.canvas.height = 0;
+  }
+  tile.colorEntry = null; tile.coloredCanvas = null;
+}
+function discardUnusedAsset(asset) {
+  if (asset && asset !== tileAsset && !tiles.some(t => t.asset === asset)) {
+    asset.canvas.width = asset.canvas.height = 0;
+  }
+}
 const controls = ['left', 'right', 'flip', 'grow', 'shrink', 'copy', 'delete'];
 function status(message) { $('status').textContent = message; }
 function update() {
@@ -27,7 +57,7 @@ function update() {
   $('count').textContent = `${tiles.length} 枚`;
   $('board-empty').hidden = tiles.length > 0;
   $('selection-label').textContent = tile ? `選択中：${tile.angle}° / ${Math.round(tile.scale * 100)}%${tile.flip ? ' / 反転' : ''}` : 'タイルを選ぶと編集できます';
-  draw();
+  requestDraw();
 }
 function paintTile(context, tile) {
   context.save(); context.translate(tile.x, tile.y); context.rotate(tile.angle * Math.PI / 180);
@@ -37,9 +67,14 @@ function paintTile(context, tile) {
 // Tint from the immutable source on every change: no cumulative color degradation.
 // Original luminance modulates the chosen color; alpha and dark ink are retained.
 function setTileColor(tile, color) {
-  tile.color = color;
-  if (!color) { tile.coloredCanvas = null; return; }
-  const canvas = tile.coloredCanvas || document.createElement('canvas');
+  if (tile.color === color && (!color || tile.colorEntry)) return;
+  releaseColor(tile); tile.color = color;
+  if (!color) return;
+  const cached = tile.asset.colors.get(color);
+  if (cached) {
+    cached.refs++; tile.colorEntry = cached; tile.coloredCanvas = cached.canvas; return;
+  }
+  const canvas = document.createElement('canvas');
   canvas.width = tile.asset.canvas.width; canvas.height = tile.asset.canvas.height;
   const pixels = new ImageData(new Uint8ClampedArray(tile.asset.pixels), canvas.width, canvas.height);
   const rgb = [1, 3, 5].map(start => parseInt(color.slice(start, start + 2), 16));
@@ -54,7 +89,9 @@ function setTileColor(tile, color) {
     }
   }
   canvas.getContext('2d').putImageData(pixels, 0, 0);
-  tile.coloredCanvas = canvas;
+  const entry = {color, canvas, refs: 1};
+  tile.asset.colors.set(color, entry);
+  tile.colorEntry = entry; tile.coloredCanvas = canvas;
 }
 function draw() {
   ctx.clearRect(0, 0, board.width, board.height);
@@ -69,8 +106,10 @@ function draw() {
 // Iterative four-neighbour fill avoids recursion limits on large photos.
 function floodFill(pixels, seed, color, threshold) {
   const { width, height, data } = pixels;
-  const visited = new Uint8Array(width * height);
-  const queue = new Int32Array(width * height);
+  if (!floodVisited || floodVisited.length !== width * height) {
+    floodVisited = new Uint8Array(width * height); floodQueue = new Int32Array(width * height);
+  } else floodVisited.fill(0);
+  const visited = floodVisited, queue = floodQueue;
   const limit = 3 * threshold * threshold;
   let head = 0, tail = 0;
   function enqueue(index) {
@@ -94,7 +133,11 @@ function floodFill(pixels, seed, color, threshold) {
 }
 function processImage() {
   if (!original) return;
-  const pixels = new ImageData(new Uint8ClampedArray((committedPixels || original).data), original.width, original.height);
+  if (!workPixels || workPixels.width !== original.width || workPixels.height !== original.height) {
+    workPixels = new ImageData(original.width, original.height);
+  }
+  const pixels = workPixels;
+  pixels.data.set((committedPixels || original).data);
   const threshold = Number($('threshold').value);
   if (activeSeed) floodFill(pixels, activeSeed, background, threshold);
   let minX = pixels.width, minY = pixels.height, maxX = -1, maxY = -1;
@@ -105,39 +148,52 @@ function processImage() {
       minX = Math.min(minX,x); maxX = Math.max(maxX,x); minY = Math.min(minY,y); maxY = Math.max(maxY,y);
     }
   }
-  processed.width = pixels.width; processed.height = pixels.height;
+  if (processed.width !== pixels.width) processed.width = pixels.width;
+  if (processed.height !== pixels.height) processed.height = pixels.height;
   sctx.putImageData(pixels,0,0);
   pctx.putImageData(pixels,0,0); processed.classList.add('ready'); $('empty-result').hidden = true;
   if (maxX < 0) {
-    tileAsset = null; $('add').disabled = true;
+    const oldAsset = tileAsset; tileAsset = null; discardUnusedAsset(oldAsset); $('add').disabled = true;
     status('すべて透明になりました。強さを下げるか、背景削除をやり直してください。'); return;
   }
   const canvas = document.createElement('canvas'); canvas.width = maxX-minX+1; canvas.height = maxY-minY+1;
   const context = canvas.getContext('2d', { willReadFrequently: true });
   context.drawImage(processed,minX,minY,canvas.width,canvas.height,0,0,canvas.width,canvas.height);
-  tileAsset = { canvas, pixels: context.getImageData(0,0,canvas.width,canvas.height).data };
+  const oldAsset = tileAsset;
+  tileAsset = { colors: new Map(), canvas, pixels: context.getImageData(0,0,canvas.width,canvas.height).data };
+  discardUnusedAsset(oldAsset);
   $('add').disabled = false;
 }
-$('upload').addEventListener('change', async event => {
+$('upload').addEventListener('change', event => {
   const file = event.target.files[0]; if (!file) return;
-  const request = ++loadSequence; const url = URL.createObjectURL(file);
-  status('写真を読み込んでいます…');
-  try {
-    const image = new Image(); image.src = url; await image.decode();
+  const request = ++loadSequence;
+  event.target.value = '';
+  // One decode at a time; skip superseded selections before decoding them.
+  imageLoad = imageLoad.then(async () => {
     if (request !== loadSequence) return;
-    const ratio = Math.min(1, 1400 / Math.max(image.naturalWidth,image.naturalHeight));
-    source.width = Math.max(1,Math.round(image.naturalWidth*ratio)); source.height = Math.max(1,Math.round(image.naturalHeight*ratio));
-    sctx.drawImage(image,0,0,source.width,source.height);
-    original = sctx.getImageData(0,0,source.width,source.height); background = null;
-    committedPixels = null; activeSeed = null;
-    source.classList.add('ready'); $('empty-source').hidden = true;
-    $('threshold').value = 40; $('threshold-value').value = 40; $('threshold').disabled = true;
-    $('restore').disabled = false; $('swatch').style.background = '#f1f2ef'; $('color-label').textContent = '背景色は未選択';
-    processImage(); status('読み込みました。上の写真の背景をタップしてください。');
-  } catch (error) { if (request === loadSequence) status('この画像を開けませんでした。JPEGまたはPNGに変換して、もう一度選んでください。'); }
-  finally { URL.revokeObjectURL(url); event.target.value = ''; }
+    const url = URL.createObjectURL(file); const image = new Image();
+    status('写真を読み込んでいます…');
+    try {
+      image.src = url; await image.decode();
+      if (request !== loadSequence) return;
+      const ratio = Math.min(1, 1400 / Math.max(image.naturalWidth,image.naturalHeight));
+      source.width = Math.max(1,Math.round(image.naturalWidth*ratio)); source.height = Math.max(1,Math.round(image.naturalHeight*ratio));
+      sctx.drawImage(image,0,0,source.width,source.height);
+      image.src = '';
+      clearTimeout(backgroundTimer); backgroundTimer = 0; backgroundPending = false;
+      workPixels = null; floodVisited = null; floodQueue = null;
+      original = sctx.getImageData(0,0,source.width,source.height); background = null;
+      committedPixels = null; activeSeed = null;
+      source.classList.add('ready'); $('empty-source').hidden = true;
+      $('threshold').value = 40; $('threshold-value').value = 40; $('threshold').disabled = true;
+      $('restore').disabled = false; $('swatch').style.background = '#f1f2ef'; $('color-label').textContent = '背景色は未選択';
+      processImage(); status('読み込みました。上の写真の背景をタップしてください。');
+    } catch (error) { if (request === loadSequence) status('この画像を開けませんでした。JPEGまたはPNGに変換して、もう一度選んでください。'); }
+    finally { image.src = ''; URL.revokeObjectURL(url); }
+  });
 });
 source.addEventListener('click', event => {
+  flushBackground();
   if (!original) return;
   const rect = source.getBoundingClientRect();
   const x = Math.max(0,Math.min(source.width-1,Math.floor((event.clientX-rect.left)*source.width/rect.width)));
@@ -154,14 +210,20 @@ source.addEventListener('click', event => {
   $('threshold').disabled = false; status('つながった背景を透明にしました。残った背景は追加でタップして消せます。'); processImage();
 });
 $('threshold').addEventListener('input', () => {
-  $('threshold-value').value = $('threshold').value; status('最後にタップした領域の強さを変更しました。'); processImage();
+  $('threshold-value').value = $('threshold').value; status('最後にタップした領域の強さを変更しました。');
+  backgroundPending = true;
+  // Throttle, not debounce: continuous scrubbing still shows intermediate results.
+  if (!backgroundTimer) backgroundTimer = setTimeout(flushBackground, 80);
 });
+$('threshold').addEventListener('change', flushBackground);
 $('restore').addEventListener('click', () => {
+  clearTimeout(backgroundTimer); backgroundTimer = 0; backgroundPending = false;
   committedPixels = null; activeSeed = null;
   background = null; $('threshold').disabled = true; $('swatch').style.background = '#f1f2ef'; $('color-label').textContent = '背景色は未選択';
   processImage(); status('元の画像に戻しました。背景をもう一度タップしてください。');
 });
 $('add').addEventListener('click', () => {
+  flushColors(); flushBackground();
   if (!tileAsset) return;
   const size = (180 * 1.2 ** 3) / Math.max(tileAsset.canvas.width,tileAsset.canvas.height);
   const offset = (tiles.length % 8)*22;
@@ -178,7 +240,10 @@ function hit(tile,p) {
   return tile.asset.pixels[(py*tile.asset.canvas.width+px)*4+3]>0;
 }
 board.addEventListener('pointerdown', event => {
-  if (drag || !event.isPrimary || event.button !== 0) return;
+  if (!event.isPrimary || event.button !== 0) return;
+  // A new primary press starts a new gesture, even if an earlier end event was lost.
+  cancelDrag();
+  flushColors();
   const p = point(event), tile = [...tiles].reverse().find(t=>hit(t,p));
   selected = tile ? tile.id : null;
   if (tile) { drag = { id:event.pointerId, tile, dx:p.x-tile.x, dy:p.y-tile.y }; board.setPointerCapture(event.pointerId); board.style.cursor = 'grabbing'; }
@@ -186,12 +251,32 @@ board.addEventListener('pointerdown', event => {
 });
 board.addEventListener('pointermove', event => {
   if (!drag || event.pointerId !== drag.id) return;
-  const p = point(event); drag.tile.x = Math.max(0,Math.min(board.width,p.x-drag.dx)); drag.tile.y = Math.max(0,Math.min(board.height,p.y-drag.dy)); draw();
+  const p = point(event); drag.tile.x = Math.max(0,Math.min(board.width,p.x-drag.dx)); drag.tile.y = Math.max(0,Math.min(board.height,p.y-drag.dy)); requestDraw();
 });
-function endDrag(event) { if (drag && event.pointerId === drag.id) { drag=null; board.style.cursor='default'; } }
+function cancelDrag() {
+  const previous = drag;
+  drag = null; board.style.cursor = 'default';
+  if (previous && board.hasPointerCapture(previous.id)) board.releasePointerCapture(previous.id);
+}
+function endDrag(event) { if (drag && event.pointerId === drag.id) cancelDrag(); }
 ['pointerup','pointercancel','lostpointercapture'].forEach(name=>board.addEventListener(name,endDrag));
-function edit(action) { const tile = tiles.find(t=>t.id===selected); if (!tile) return; action(tile); update(); }
-$('tile-color').addEventListener('input', event => edit(tile => setTileColor(tile, event.target.value)));
+// Rotation can interrupt a touch without delivering its final event to the canvas.
+// Keep logical tile coordinates and selection; only abandon the interrupted gesture.
+function refreshViewport() { cancelDrag(); requestDraw(); }
+window.addEventListener('resize', refreshViewport);
+window.addEventListener('orientationchange', refreshViewport);
+window.addEventListener('blur', cancelDrag);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) cancelDrag(); else refreshViewport();
+});
+['pointerup', 'pointercancel'].forEach(name => window.addEventListener(name, endDrag));
+function edit(action) { flushColors(); const tile = tiles.find(t=>t.id===selected); if (!tile) return; action(tile); update(); }
+$('tile-color').addEventListener('input', event => {
+  const tile = tiles.find(t => t.id === selected); if (!tile) return;
+  pendingColors.set(tile, event.target.value);
+  if (!colorFrame) colorFrame = requestAnimationFrame(() => { flushColors(); update(); });
+});
+$('tile-color').addEventListener('change', () => { flushColors(); update(); });
 $('color-reset').onclick = () => edit(tile => setTileColor(tile, null));
 document.querySelectorAll('[data-tile-color]').forEach(button => {
   button.onclick = () => edit(tile => setTileColor(tile, button.dataset.tileColor));
@@ -206,15 +291,14 @@ $('copy').onclick = () => edit(tile => {
     ...tile, id: ++sequence,
     x: tile.x + (tile.x + 24 <= board.width ? 24 : -24),
     y: tile.y + (tile.y + 24 <= board.height ? 24 : -24),
-    coloredCanvas: null,
   };
-  // The source asset is immutable; each copy owns its mutable color canvas.
-  setTileColor(copy, tile.color);
+  // Color canvases are immutable and reference-counted across copies.
+  if (copy.colorEntry) copy.colorEntry.refs++;
   tiles.push(copy); selected = copy.id;
   status('タイルをコピーしました。コピーしたタイルを選択しています。');
 });
-$('delete').onclick = () => edit(t=>{ tiles=tiles.filter(v=>v.id!==t.id); selected=null; status('選択したタイルを削除しました。'); });
-$('next').onclick = () => { if (!tiles.length) return; const index=tiles.findIndex(t=>t.id===selected); selected=tiles[(index+1)%tiles.length].id; update(); };
+$('delete').onclick = () => edit(t=>{ releaseColor(t); tiles=tiles.filter(v=>v.id!==t.id); discardUnusedAsset(t.asset); selected=null; status('選択したタイルを削除しました。'); });
+$('next').onclick = () => { flushColors(); if (!tiles.length) return; const index=tiles.findIndex(t=>t.id===selected); selected=tiles[(index+1)%tiles.length].id; update(); };
 board.addEventListener('keydown',event=>{
   if (!selected || !['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Delete','Backspace'].includes(event.key)) return;
   event.preventDefault();
@@ -224,14 +308,18 @@ board.addEventListener('keydown',event=>{
 });
 $('reset').onclick = () => {
   if (!tiles.length || !window.confirm('配置したタイルをすべて消しますか？ 読み込んだ写真は残ります。')) return;
-  tiles=[]; selected=null; drag=null; update(); status('制作エリアをリセットしました。');
+  flushColors();
+  const assets = new Set(tiles.map(t => t.asset));
+  tiles.forEach(releaseColor); tiles=[]; assets.forEach(discardUnusedAsset); selected=null; cancelDrag(); update(); status('制作エリアをリセットしました。');
 };
 $('save').onclick = () => {
+  flushColors(); update();
   if (!tiles.length) return;
   const output = document.createElement('canvas'); output.width=board.width; output.height=board.height;
   const context = output.getContext('2d'); context.fillStyle='#ffffff'; context.fillRect(0,0,output.width,output.height);
   tiles.forEach(t=>paintTile(context,t));
   output.toBlob(blob=>{
+    output.width = output.height = 0;
     if (!blob) {status('画像を保存できませんでした。もう一度お試しください。');return;}
     if (downloadUrl) URL.revokeObjectURL(downloadUrl);
     downloadUrl=URL.createObjectURL(blob);
@@ -244,16 +332,3 @@ $('save').onclick = () => {
   },'image/png');
 };
 update();
-
-// Record one visit per page load without waiting for the response or retrying.
-try {
-  fetch('https://script.google.com/macros/s/AKfycbxssCIHsD-N97SHxNC_GN0ihYeC0qy-lb-EY0KmSs6Gnztaph1sITMerLVEnNWOGkYc/exec?app=tiling-maker', {
-    method: 'GET',
-    mode: 'no-cors',
-    cache: 'no-store',
-    credentials: 'omit',
-    keepalive: true,
-  }).catch(() => {});
-} catch {
-  // Access logging must never interrupt the app.
-}

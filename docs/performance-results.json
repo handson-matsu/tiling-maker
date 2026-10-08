@@ -1,0 +1,156 @@
+[
+  {
+    "input": "small",
+    "version": "legacy",
+    "loadMs": 24.397249999999985,
+    "sourceHash": 3221390173,
+    "coloredHash": 1797981439,
+    "boardHash": 3168235411,
+    "unchanged": true,
+    "colorBytes": 3148800,
+    "uniqueColorCanvases": 41,
+    "mutationMs": 7.200000047683716,
+    "totalMs": 19.90000009536743,
+    "drawCalls": 42,
+    "tileCount": 41,
+    "background": {
+      "hash": 3095006771,
+      "calls": 20,
+      "ms": 12.900000095367432
+    },
+    "pngHash": "af0ac12a17bb5a2a100295d847722d05c0ffee9179c782d1507497c96d550f8a"
+  },
+  {
+    "input": "small",
+    "version": "pages",
+    "loadMs": 28.693874999999935,
+    "sourceHash": 3221390173,
+    "coloredHash": 1797981439,
+    "boardHash": 3168235411,
+    "unchanged": true,
+    "colorBytes": 76800,
+    "uniqueColorCanvases": 1,
+    "mutationMs": 0.39999985694885254,
+    "totalMs": 15.299999952316284,
+    "drawCalls": 2,
+    "tileCount": 41,
+    "stress": {
+      "elapsed": 5.799999952316284,
+      "correct": true,
+      "colorCount": 3,
+      "drawCalls": 1,
+      "cleared": true
+    },
+    "background": {
+      "hash": 3095006771,
+      "calls": 1,
+      "ms": 1
+    },
+    "pngHash": "af0ac12a17bb5a2a100295d847722d05c0ffee9179c782d1507497c96d550f8a"
+  },
+  {
+    "input": "small",
+    "version": "gas",
+    "loadMs": 26.950333000000228,
+    "sourceHash": 3221390173,
+    "coloredHash": 1797981439,
+    "boardHash": 3168235411,
+    "unchanged": true,
+    "colorBytes": 76800,
+    "uniqueColorCanvases": 1,
+    "mutationMs": 0.2999999523162842,
+    "totalMs": 30,
+    "drawCalls": 2,
+    "tileCount": 41,
+    "stress": {
+      "elapsed": 7.200000047683716,
+      "correct": true,
+      "colorCount": 3,
+      "drawCalls": 1,
+      "cleared": true
+    },
+    "background": {
+      "hash": 3095006771,
+      "calls": 1,
+      "ms": 1.7000000476837158
+    },
+    "pngHash": "af0ac12a17bb5a2a100295d847722d05c0ffee9179c782d1507497c96d550f8a"
+  },
+  {
+    "input": "photo",
+    "version": "legacy",
+    "loadMs": 64.21670899999936,
+    "sourceHash": 948745086,
+    "coloredHash": 3659374136,
+    "boardHash": 2860734054,
+    "unchanged": true,
+    "colorBytes": 241080000,
+    "uniqueColorCanvases": 41,
+    "mutationMs": 359.7999999523163,
+    "totalMs": 361.2000000476837,
+    "drawCalls": 42,
+    "tileCount": 41,
+    "background": {
+      "hash": 1370700280,
+      "calls": 20,
+      "ms": 393.19999980926514
+    },
+    "pngHash": "e929dc8f774e317de6f700a12566867e7f65f3fe50f4bcdef183ef403fe330c1"
+  },
+  {
+    "input": "photo",
+    "version": "pages",
+    "loadMs": 67.59920900000088,
+    "sourceHash": 948745086,
+    "coloredHash": 3659374136,
+    "boardHash": 2860734054,
+    "unchanged": true,
+    "colorBytes": 5880000,
+    "uniqueColorCanvases": 1,
+    "mutationMs": 0.5,
+    "totalMs": 21.299999952316284,
+    "drawCalls": 2,
+    "tileCount": 41,
+    "stress": {
+      "elapsed": 4.199999809265137,
+      "correct": true,
+      "colorCount": 3,
+      "drawCalls": 1,
+      "cleared": true
+    },
+    "background": {
+      "hash": 1370700280,
+      "calls": 1,
+      "ms": 26.100000143051147
+    },
+    "pngHash": "e929dc8f774e317de6f700a12566867e7f65f3fe50f4bcdef183ef403fe330c1"
+  },
+  {
+    "input": "photo",
+    "version": "gas",
+    "loadMs": 65.9277089999996,
+    "sourceHash": 948745086,
+    "coloredHash": 3659374136,
+    "boardHash": 2860734054,
+    "unchanged": true,
+    "colorBytes": 5880000,
+    "uniqueColorCanvases": 1,
+    "mutationMs": 0.2999999523162842,
+    "totalMs": 1.4000000953674316,
+    "drawCalls": 2,
+    "tileCount": 41,
+    "stress": {
+      "elapsed": 4,
+      "correct": true,
+      "colorCount": 3,
+      "drawCalls": 1,
+      "cleared": true
+    },
+    "background": {
+      "hash": 1370700280,
+      "calls": 1,
+      "ms": 24.699999809265137
+    },
+    "pngHash": "e929dc8f774e317de6f700a12566867e7f65f3fe50f4bcdef183ef403fe330c1"
+  }
+]

@@ -5,7 +5,7 @@ const assert=require('node:assert/strict');
  const browser=await chromium.launch({headless:true,channel:'chrome'});
  const page=await browser.newPage({viewport:{width:1280,height:1000},acceptDownloads:true});
  const errors=[]; page.on('pageerror',e=>errors.push(e.message));
- await page.goto('http://127.0.0.1:8000');
+ await page.goto(require('node:url').pathToFileURL(require('node:path').resolve(__dirname,'../index.html')).href);
  const png=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=200;c.height=160;const x=c.getContext('2d');x.fillStyle='white';x.fillRect(0,0,200,160);x.fillStyle='#e45235';x.fillRect(50,30,100,100);x.fillStyle='#eeeeee';x.fillRect(0,0,20,20);return c.toDataURL().split(',')[1];});
  await page.locator('#upload').setInputFiles({name:'tile.png',mimeType:'image/png',buffer:Buffer.from(png,'base64')});
  await page.waitForFunction(()=>!!original);
@@ -69,7 +69,7 @@ const assert=require('node:assert/strict');
  // A fresh fill after restore must not retain any earlier removal.
  await page.locator('#source').click({position:{x:150,y:120}});
  assert.equal(await alpha(10,30),255);assert.equal(await alpha(150,30),255);assert.equal(await alpha(150,120),0);
- const mobile=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:2});const touch=await mobile.newPage();await touch.goto('http://127.0.0.1:8000');
+ const mobile=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:2});const touch=await mobile.newPage();await touch.goto(require('node:url').pathToFileURL(require('node:path').resolve(__dirname,'../index.html')).href);
  await touch.locator('#upload').setInputFiles({name:'tile.png',mimeType:'image/png',buffer:Buffer.from(png,'base64')});await touch.waitForFunction(()=>!!original);
  await touch.locator('#source').tap({position:{x:30,y:10}});await touch.locator('#add').click();await touch.locator('#board').scrollIntoViewIfNeeded();
  const r=await touch.locator('#board').boundingBox();const pos=await touch.evaluate(()=>({x:tiles[0].x,y:tiles[0].y}));const x=r.x+pos.x/1200*r.width,y=r.y+pos.y/800*r.height;

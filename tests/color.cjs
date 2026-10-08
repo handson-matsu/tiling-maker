@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
   try {
     const page = await browser.newPage({ viewport:{width:1280,height:1000}, acceptDownloads:true });
     const errors=[]; page.on('pageerror',error=>errors.push(error.message));
-    await page.goto('http://127.0.0.1:8000');
+    await page.goto(require('node:url').pathToFileURL(require('node:path').resolve(__dirname,'../index.html')).href);
     assert.equal(await page.locator('#tile-color').isDisabled(),true);
     const png = await page.evaluate(() => {
       const c=document.createElement('canvas'); c.width=c.height=100; const x=c.getContext('2d');
@@ -56,7 +56,7 @@ const assert = require('node:assert/strict');
     assert.deepEqual(await page.evaluate(()=>tiles.map(t=>t.color)),colors,'chosen colors must remain unchanged');
     // Compare the exported image to the board (white backing, no selection outline).
     assert.ok(await page.evaluate(async()=>{
-      selected=null;update();const image=new Image();image.src=downloadUrl;await image.decode();
+      selected=null;update();await new Promise(requestAnimationFrame);const image=new Image();image.src=downloadUrl;await image.decode();
       const c=document.createElement('canvas');c.width=1200;c.height=800;const x=c.getContext('2d');x.fillStyle='white';x.fillRect(0,0,1200,800);x.drawImage(board,0,0);const display=x.getImageData(0,0,1200,800).data;
       x.clearRect(0,0,1200,800);x.drawImage(image,0,0);const exported=x.getImageData(0,0,1200,800).data;
       return display.every((v,i)=>Math.abs(v-exported[i])<=1);
